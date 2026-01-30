@@ -1,36 +1,137 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
+const API_BASE = "http://localhost:8000";
+
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const fetchLeads = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const res = await axios.get("http://localhost:8000/leads");
-        setLeads(res.data);
-      } catch (err) {
-        setError(err?.message || "Failed to fetch leads");
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Form state (controlled inputs)
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
 
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const fetchLeads = async () => {
+    try {
+      setError("");
+      const res = await axios.get(`${API_BASE}/leads`);
+      setLeads(res.data);
+    } catch (err) {
+      setError(err?.message || "Failed to fetch leads");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchLeads();
   }, []);
 
-  if (loading) return <div style={{ padding: 16 }}>Loading leads...</div>;
-  if (error) return <div style={{ padding: 16, color: "red" }}>{error}</div>;
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const createLead = async (e) => {
+    e.preventDefault();
+
+    // minimal validation (frontend)
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
+      setError("Please fill name, email, and phone.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError("");
+
+      await axios.post(`${API_BASE}/leads`, {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+      });
+
+      // clear form
+      setForm({ name: "", email: "", phone: "" });
+
+      // refresh list
+      await fetchLeads();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Failed to create lead");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteLead = async (id) => {
+    try {
+      setDeletingId(id);
+      setError("");
+
+      await axios.delete(`${API_BASE}/leads/${id}`);
+
+      // refresh list
+      await fetchLeads();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Failed to delete lead");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div style={{ padding: 16 }}>
       <h1>Leads</h1>
 
-      {leads.length === 0 ? (
+      {/* Error */}
+      {error && <div style={{ marginBottom: 12, color: "red" }}>{error}</div>}
+
+      {/* Add Lead Form */}
+      <form onSubmit={createLead} style={{ marginBottom: 16 }}>
+        <h2 style={{ marginBottom: 8 }}>Add Lead</h2>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            name="name"
+            placeholder="Name"
+            value={form.name}
+            onChange={onChange}
+            style={{ padding: 8, minWidth: 220 }}
+          />
+
+          <input
+            name="email"
+            placeholder="Email"
+            value={form.email}
+            onChange={onChange}
+            style={{ padding: 8, minWidth: 220 }}
+          />
+
+          <input
+            name="phone"
+            placeholder="Phone"
+            value={form.phone}
+            onChange={onChange}
+            style={{ padding: 8, minWidth: 180 }}
+          />
+
+          <button type="submit" disabled={submitting} style={{ padding: "8px 12px" }}>
+            {submitting ? "Adding..." : "Add Lead"}
+          </button>
+        </div>
+      </form>
+
+      {/* Loading / Table */}
+      {loading ? (
+        <div>Loading leads...</div>
+      ) : leads.length === 0 ? (
         <p>No leads found.</p>
       ) : (
         <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -41,8 +142,10 @@ export default function Leads() {
               <th>Email</th>
               <th>Phone</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {leads.map((lead) => (
               <tr key={lead.id}>
@@ -51,6 +154,15 @@ export default function Leads() {
                 <td>{lead.email}</td>
                 <td>{lead.phone ?? "-"}</td>
                 <td>{lead.status}</td>
+                <td>
+                  <button
+                    onClick={() => deleteLead(lead.id)}
+                    disabled={deletingId === lead.id}
+                    style={{ padding: "6px 10px" }}
+                  >
+                    {deletingId === lead.id ? "Deleting..." : "Delete"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
