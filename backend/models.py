@@ -7,3 +7,8 @@ class Contact(SQLModel, table=True):
     email: str
     phone: Optional[str] = None
     status: str = "Lead"
+
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    hashed_password: str

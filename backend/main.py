@@ -1,3 +1,12 @@
+from db import init_db, engine
+from fastapi.security import OAuth2PasswordRequestForm
+from auth import (
+    create_access_token,
+    verify_password,
+    hash_password,
+    get_user_by_email,
+    get_current_user,
+)
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
@@ -22,16 +31,36 @@ app.add_middleware(
 def on_startup():
     init_db()
 
+    # Create default admin if none exists
+    with Session(engine) as session:
+        admin_email = "admin@example.com"
+        admin_password = "admin123"  # change this later
+
+        existing = get_user_by_email(session, admin_email)
+        if not existing:
+            admin = models.User(
+                email=admin_email,
+                hashed_password=hash_password(admin_password),
+            )
+            session.add(admin)
+            session.commit()
+
+    
+
 @app.get("/")
 def root():
     return {"status": "ok"}
 
 @app.post("/leads", response_model=ContactRead)
-def create_lead(payload: ContactCreate, session: Session = Depends(get_session)):
+def create_lead(
+    payload: ContactCreate,
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
     contact = models.Contact(
         name=payload.name,
         email=payload.email,
-        phone=payload.phone
+        phone=payload.phone,
     )
     session.add(contact)
     session.commit()
@@ -39,12 +68,35 @@ def create_lead(payload: ContactCreate, session: Session = Depends(get_session))
     return contact
 
 @app.get("/leads", response_model=list[ContactRead])
-def get_leads(session: Session = Depends(get_session)):
+def get_leads(
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
     leads = session.exec(select(models.Contact)).all()
     return leads
 
+
+@app.post("/auth/login")
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: Session = Depends(get_session),
+):
+    # OAuth2PasswordRequestForm uses `username`; we treat it as email
+    user = get_user_by_email(session, form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
+
+
 @app.put("/leads/{id}", response_model=ContactRead)
-def update_lead(id: int, payload: ContactUpdate, session: Session = Depends(get_session)):
+def update_lead(
+    id: int,
+    payload: ContactUpdate,
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
     contact = session.get(models.Contact, id)
     if not contact:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -63,8 +115,13 @@ def update_lead(id: int, payload: ContactUpdate, session: Session = Depends(get_
     session.refresh(contact)
     return contact
 
+
 @app.delete("/leads/{id}")
-def delete_lead(id: int, session: Session = Depends(get_session)):
+def delete_lead(
+    id: int,
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
     contact = session.get(models.Contact, id)
     if not contact:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -72,3 +129,4 @@ def delete_lead(id: int, session: Session = Depends(get_session)):
     session.delete(contact)
     session.commit()
     return {"message": f"Lead {id} deleted"}
+
