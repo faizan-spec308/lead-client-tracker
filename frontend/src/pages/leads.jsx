@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../api";
+
 
 const API_BASE = "http://localhost:8000";
 
@@ -21,7 +22,7 @@ export default function Leads() {
   const fetchLeads = async () => {
     try {
       setError("");
-      const res = await axios.get(`${API_BASE}/leads`);
+      const res = await api.get("/leads");
       setLeads(res.data);
     } catch (err) {
       setError(err?.message || "Failed to fetch leads");
@@ -52,7 +53,7 @@ export default function Leads() {
       setSubmitting(true);
       setError("");
 
-      await axios.post(`${API_BASE}/leads`, {
+      await api.post("/leads", {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
@@ -75,7 +76,7 @@ export default function Leads() {
       setDeletingId(id);
       setError("");
 
-      await axios.delete(`${API_BASE}/leads/${id}`);
+      await await api.delete(`/leads/${id}`);
 
       // refresh list
       await fetchLeads();

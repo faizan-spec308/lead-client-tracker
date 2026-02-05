@@ -1,18 +1,43 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import Leads from "./pages/leads";
+import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
+import Leads from "./pages/leads"; // NOTE: match your actual file name (leads.jsx)
+import LoginPage from "./pages/LoginPage";
+import PrivateRoute from "./components/PrivateRoute";
+import { useAuth } from "./context/AuthContext";
+
+function Nav() {
+  const { isAuthed, logout } = useAuth();
+
+  return (
+    <nav style={{ display: "flex", gap: 12, padding: 16 }}>
+      {isAuthed ? (
+        <>
+          <Link to="/leads">Leads</Link>
+          <button onClick={logout}>Logout</button>
+        </>
+      ) : (
+        <Link to="/login">Login</Link>
+      )}
+    </nav>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
-      <div style={{ padding: 16 }}>
-        <nav style={{ marginBottom: 16 }}>
-          <Link to="/leads">Leads</Link>
-        </nav>
+      <Nav />
+      <Routes>
+        <Route path="/" element={<Navigate to="/leads" replace />} />
+        <Route path="/login" element={<LoginPage />} />
 
-        <Routes>
-          <Route path="/leads" element={<Leads />} />
-        </Routes>
-      </div>
+        <Route
+          path="/leads"
+          element={
+            <PrivateRoute>
+              <Leads />
+            </PrivateRoute>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }
