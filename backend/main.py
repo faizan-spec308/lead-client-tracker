@@ -90,6 +90,13 @@ def login(
     return {"access_token": token, "token_type": "bearer"}
 
 
+from fastapi import HTTPException, Depends
+from sqlmodel import Session
+import models
+from deps import get_session
+from schemas import ContactUpdate, ContactRead
+from auth import get_current_user
+
 @app.put("/leads/{id}", response_model=ContactRead)
 def update_lead(
     id: int,
@@ -101,19 +108,22 @@ def update_lead(
     if not contact:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    if payload.name is not None:
-        contact.name = payload.name
-    if payload.email is not None:
-        contact.email = payload.email
-    if payload.phone is not None:
-        contact.phone = payload.phone
-    if payload.status is not None:
-        contact.status = payload.status
+    data = payload.model_dump(exclude_unset=True)
+
+    # optional: minimal validation
+    if "email" in data and not data["email"]:
+        raise HTTPException(status_code=400, detail="Email cannot be empty")
+    if "name" in data and not data["name"]:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    for key, value in data.items():
+        setattr(contact, key, value)
 
     session.add(contact)
     session.commit()
     session.refresh(contact)
     return contact
+
 
 
 @app.delete("/leads/{id}")

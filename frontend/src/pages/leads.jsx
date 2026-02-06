@@ -1,33 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 
+const initialForm = { name: "", email: "", phone: "", status: "Lead" };
 
-const API_BASE = "http://localhost:8000";
+function validate(form) {
+  const errors = {};
 
-export default function Leads() {
+  if (!form.name.trim()) errors.name = "Name is required";
+  if (!form.email.trim()) errors.email = "Email is required";
+  else if (!/^\S+@\S+\.\S+$/.test(form.email.trim()))
+    errors.email = "Email format looks invalid";
+
+  // phone optional (keep simple)
+  // status optional but we keep one
+  return errors;
+}
+
+export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadingLeads, setLoadingLeads] = useState(true);
 
-  // Form state (controlled inputs)
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-  });
+  const [form, setForm] = useState(initialForm);
+  const [errors, setErrors] = useState({});
+  const [mode, setMode] = useState("create"); // "create" | "edit"
+  const [editingId, setEditingId] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  const [message, setMessage] = useState(""); // success
+  const [errorMsg, setErrorMsg] = useState(""); // error
+
+  const isEdit = mode === "edit";
+
+  const resetMessages = () => {
+    setMessage("");
+    setErrorMsg("");
+  };
+
   const fetchLeads = async () => {
     try {
-      setError("");
+      setLoadingLeads(true);
+      resetMessages();
       const res = await api.get("/leads");
       setLeads(res.data);
     } catch (err) {
-      setError(err?.message || "Failed to fetch leads");
+      setErrorMsg(err?.response?.data?.detail || "Failed to load leads");
     } finally {
-      setLoading(false);
+      setLoadingLeads(false);
     }
   };
 
@@ -35,140 +55,250 @@ export default function Leads() {
     fetchLeads();
   }, []);
 
-  const onChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  const onChange = (key) => (e) => {
+    resetMessages();
+    setForm((prev) => ({ ...prev, [key]: e.target.value }));
   };
 
-  const createLead = async (e) => {
-    e.preventDefault();
+  const startEdit = (lead) => {
+    resetMessages();
+    setMode("edit");
+    setEditingId(lead.id);
+    setForm({
+      name: lead.name ?? "",
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
+      status: lead.status ?? "Lead",
+    });
+    setErrors({});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-    // minimal validation (frontend)
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
-      setError("Please fill name, email, and phone.");
-      return;
-    }
+  const cancelEdit = () => {
+    resetMessages();
+    setMode("create");
+    setEditingId(null);
+    setForm(initialForm);
+    setErrors({});
+  };
+
+  // Only send changed fields on edit (higher quality)
+  const editPayload = useMemo(() => {
+    if (!isEdit) return null;
+    const original = leads.find((x) => x.id === editingId);
+    if (!original) return null;
+
+    const patch = {};
+    if ((form.name ?? "") !== (original.name ?? "")) patch.name = form.name;
+    if ((form.email ?? "") !== (original.email ?? "")) patch.email = form.email;
+    if ((form.phone ?? "") !== (original.phone ?? "")) patch.phone = form.phone;
+    if ((form.status ?? "Lead") !== (original.status ?? "Lead")) patch.status = form.status;
+
+    return patch;
+  }, [isEdit, editingId, form, leads]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    resetMessages();
+
+    const v = validate(form);
+    setErrors(v);
+    if (Object.keys(v).length > 0) return;
 
     try {
       setSubmitting(true);
-      setError("");
 
-      await api.post("/leads", {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-      });
+      if (!isEdit) {
+        // CREATE
+        const payload = {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim() || null,
+        };
+        await api.post("/leads", payload);
+        setMessage("Lead created");
+        setForm(initialForm);
+        await fetchLeads(); // consistent state
+        return;
+      }
 
-      // clear form
-      setForm({ name: "", email: "", phone: "" });
+      // EDIT
+      if (!editingId) {
+        setErrorMsg("No lead selected to edit");
+        return;
+      }
 
-      // refresh list
-      await fetchLeads();
+      // If nothing changed, don’t spam the API
+      if (!editPayload || Object.keys(editPayload).length === 0) {
+        setMessage("No changes to save");
+        return;
+      }
+
+      const res = await api.put(`/leads/${editingId}`, editPayload);
+
+      // Update list locally (fast + correct)
+      setLeads((prev) => prev.map((x) => (x.id === editingId ? res.data : x)));
+
+      setMessage("Lead updated");
+      cancelEdit();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Failed to create lead");
+      setErrorMsg(err?.response?.data?.detail || "Save failed");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const deleteLead = async (id) => {
+  const handleDelete = async (id) => {
+    resetMessages();
     try {
       setDeletingId(id);
-      setError("");
-
-      await await api.delete(`/leads/${id}`);
-
-      // refresh list
-      await fetchLeads();
+      await api.delete(`/leads/${id}`);
+      setLeads((prev) => prev.filter((x) => x.id !== id));
+      setMessage("Lead deleted");
+      if (editingId === id) cancelEdit();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Failed to delete lead");
+      setErrorMsg(err?.response?.data?.detail || "Delete failed");
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
-    <div style={{ padding: 16 }}>
+    <div style={{ padding: 16, maxWidth: 900 }}>
       <h1>Leads</h1>
 
-      {/* Error */}
-      {error && <div style={{ marginBottom: 12, color: "red" }}>{error}</div>}
+      {/* Alerts */}
+      {message && (
+        <div style={{ padding: 10, marginBottom: 12, border: "1px solid #ccc" }}>
+          {message}
+        </div>
+      )}
+      {errorMsg && (
+        <div style={{ padding: 10, marginBottom: 12, border: "1px solid #f99", color: "crimson" }}>
+          {errorMsg}
+        </div>
+      )}
 
-      {/* Add Lead Form */}
-      <form onSubmit={createLead} style={{ marginBottom: 16 }}>
-        <h2 style={{ marginBottom: 8 }}>Add Lead</h2>
+      {/* Form */}
+      <div style={{ padding: 12, border: "1px solid #ddd", marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>{isEdit ? `Edit Lead #${editingId}` : "Add Lead"}</h2>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            name="name"
-            placeholder="Name"
-            value={form.name}
-            onChange={onChange}
-            style={{ padding: 8, minWidth: 220 }}
-          />
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label>Name</label>
+              <input
+                style={{ width: "100%", padding: 8 }}
+                value={form.name}
+                onChange={onChange("name")}
+              />
+              {errors.name && <div style={{ color: "crimson" }}>{errors.name}</div>}
+            </div>
 
-          <input
-            name="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={onChange}
-            style={{ padding: 8, minWidth: 220 }}
-          />
+            <div>
+              <label>Email</label>
+              <input
+                style={{ width: "100%", padding: 8 }}
+                value={form.email}
+                onChange={onChange("email")}
+              />
+              {errors.email && <div style={{ color: "crimson" }}>{errors.email}</div>}
+            </div>
 
-          <input
-            name="phone"
-            placeholder="Phone"
-            value={form.phone}
-            onChange={onChange}
-            style={{ padding: 8, minWidth: 180 }}
-          />
+            <div>
+              <label>Phone (optional)</label>
+              <input
+                style={{ width: "100%", padding: 8 }}
+                value={form.phone}
+                onChange={onChange("phone")}
+              />
+            </div>
 
-          <button type="submit" disabled={submitting} style={{ padding: "8px 12px" }}>
-            {submitting ? "Adding..." : "Add Lead"}
+            <div>
+              <label>Status</label>
+              <select style={{ width: "100%", padding: 8 }} value={form.status} onChange={onChange("status")}>
+                <option value="Lead">Lead</option>
+                <option value="Contacted">Contacted</option>
+                <option value="Qualified">Qualified</option>
+                <option value="Customer">Customer</option>
+                <option value="Lost">Lost</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+            <button disabled={submitting} style={{ padding: "8px 12px" }}>
+              {submitting ? "Saving..." : isEdit ? "Save changes" : "Create lead"}
+            </button>
+
+            {isEdit && (
+              <button type="button" onClick={cancelEdit} disabled={submitting} style={{ padding: "8px 12px" }}>
+                Cancel
+              </button>
+            )}
+          </div>
+
+          {isEdit && editPayload && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
+              {Object.keys(editPayload).length === 0
+                ? "No changes detected."
+                : `Changes to save: ${Object.keys(editPayload).join(", ")}`}
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* List */}
+      <div style={{ padding: 12, border: "1px solid #ddd" }}>
+        <h2 style={{ marginTop: 0 }}>All Leads</h2>
+
+        {loadingLeads ? (
+          <div>Loading leads...</div>
+        ) : leads.length === 0 ? (
+          <div>No leads found.</div>
+        ) : (
+          <table width="100%" cellPadding="8" style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th align="left">ID</th>
+                <th align="left">Name</th>
+                <th align="left">Email</th>
+                <th align="left">Phone</th>
+                <th align="left">Status</th>
+                <th align="left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((lead) => (
+                <tr key={lead.id} style={{ borderTop: "1px solid #eee" }}>
+                  <td>{lead.id}</td>
+                  <td>{lead.name}</td>
+                  <td>{lead.email}</td>
+                  <td>{lead.phone || "-"}</td>
+                  <td>{lead.status}</td>
+                  <td style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => startEdit(lead)} disabled={submitting || deletingId === lead.id}>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(lead.id)}
+                      disabled={deletingId === lead.id || submitting}
+                    >
+                      {deletingId === lead.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div style={{ marginTop: 10 }}>
+          <button onClick={fetchLeads} disabled={loadingLeads}>
+            Refresh
           </button>
         </div>
-      </form>
-
-      {/* Loading / Table */}
-      {loading ? (
-        <div>Loading leads...</div>
-      ) : leads.length === 0 ? (
-        <p>No leads found.</p>
-      ) : (
-        <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {leads.map((lead) => (
-              <tr key={lead.id}>
-                <td>{lead.id}</td>
-                <td>{lead.name}</td>
-                <td>{lead.email}</td>
-                <td>{lead.phone ?? "-"}</td>
-                <td>{lead.status}</td>
-                <td>
-                  <button
-                    onClick={() => deleteLead(lead.id)}
-                    disabled={deletingId === lead.id}
-                    style={{ padding: "6px 10px" }}
-                  >
-                    {deletingId === lead.id ? "Deleting..." : "Delete"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      </div>
     </div>
   );
 }
