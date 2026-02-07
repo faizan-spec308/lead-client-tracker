@@ -74,6 +74,23 @@ export default function LeadsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleConvert = async (id) => {
+  resetMessages();
+  try {
+    setSubmitting(true);
+    await api.post(`/leads/${id}/convert`);
+    setMessage("Lead converted to client");
+
+    // easiest + safest: refetch leads so status updates
+    await fetchLeads();
+  } catch (err) {
+    setErrorMsg(err?.response?.data?.detail || "Convert failed");
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+
   const cancelEdit = () => {
     resetMessages();
     setMode("create");
@@ -285,6 +302,12 @@ export default function LeadsPage() {
                       disabled={deletingId === lead.id || submitting}
                     >
                       {deletingId === lead.id ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      onClick={() => handleConvert(lead.id)}
+                      disabled={deletingId === lead.id || submitting}
+                    >
+                      Convert
                     </button>
                   </td>
                 </tr>

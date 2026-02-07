@@ -3,16 +3,20 @@ import Leads from "./pages/leads"; // NOTE: match your actual file name (leads.j
 import LoginPage from "./pages/LoginPage";
 import PrivateRoute from "./components/PrivateRoute";
 import { useAuth } from "./context/AuthContext";
+import ClientsPage from "./pages/Clients";
 
 function Nav() {
   const { isAuthed, logout } = useAuth();
+  
 
   return (
     <nav style={{ display: "flex", gap: 12, padding: 16 }}>
       {isAuthed ? (
         <>
           <Link to="/leads">Leads</Link>
+          <Link to="/clients">Clients</Link>
           <button onClick={logout}>Logout</button>
+          
         </>
       ) : (
         <Link to="/login">Login</Link>
@@ -34,6 +38,14 @@ export default function App() {
           element={
             <PrivateRoute>
               <Leads />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/clients"
+          element={
+            <PrivateRoute>
+              <ClientsPage />
             </PrivateRoute>
           }
         />

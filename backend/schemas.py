@@ -15,3 +15,21 @@ class ContactUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     status: Optional[str] = None
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserRead(BaseModel):
+    id: int
+    email: str
+
+
+class ClientRead(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone: str | None = None
+    source_lead_id: int | None = None
+

@@ -1,5 +1,9 @@
-from db import init_db, engine
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import Session, select
+
+import models
 from auth import (
     create_access_token,
     verify_password,
@@ -7,14 +11,10 @@ from auth import (
     get_user_by_email,
     get_current_user,
 )
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
-
-import models
-from db import init_db
+from db import init_db, engine
 from deps import get_session
-from schemas import ContactCreate, ContactRead, ContactUpdate
+from schemas import ContactCreate, ContactRead, ContactUpdate, ClientRead
+
 
 app = FastAPI()
 
@@ -139,4 +139,47 @@ def delete_lead(
     session.delete(contact)
     session.commit()
     return {"message": f"Lead {id} deleted"}
+
+@app.get("/clients", response_model=list[ClientRead])
+def get_clients(
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
+    return session.exec(select(models.Client)).all()
+
+@app.post("/leads/{id}/convert", response_model=ClientRead)
+def convert_lead_to_client(
+    id: int,
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
+    lead = session.get(models.Contact, id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    if lead.status == "Converted":
+        raise HTTPException(status_code=400, detail="Lead already converted")
+
+    # Optional extra guard: prevent creating multiple clients from same lead
+    existing_client = session.exec(
+        select(models.Client).where(models.Client.source_lead_id == id)
+    ).first()
+    if existing_client:
+        raise HTTPException(status_code=400, detail="Client already exists for this lead")
+
+    client = models.Client(
+        name=lead.name,
+        email=lead.email,
+        phone=lead.phone,
+        source_lead_id=lead.id,
+    )
+
+    lead.status = "Converted"
+
+    session.add(client)
+    session.add(lead)
+    session.commit()
+    session.refresh(client)
+    return client
+
 

@@ -7,9 +7,16 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from sqlmodel import Session, select
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+
 
 import models
 from deps import get_session
+
+
+bearer_scheme = HTTPBearer()
+
 
 # ---- Config ----
 SECRET_KEY = os.getenv("JWT_SECRET", "CHANGE_THIS_SECRET_IN_PRODUCTION")
@@ -55,12 +62,13 @@ def get_user_by_email(session: Session, email: str) -> Optional[models.User]:
     return session.exec(statement).first()
 
 
-# ---- Protected dependency ----
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     session: Session = Depends(get_session),
 ) -> models.User:
+    token = credentials.credentials  # This is the raw JWT token
     payload = decode_token(token)
+
     email = payload.get("sub")
     if not email:
         raise HTTPException(status_code=401, detail="Token missing subject (sub)")
