@@ -31,6 +31,9 @@ export default function LeadsPage() {
   const [message, setMessage] = useState(""); // success
   const [errorMsg, setErrorMsg] = useState(""); // error
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
   const isEdit = mode === "edit";
 
   const resetMessages = () => {
@@ -55,10 +58,27 @@ export default function LeadsPage() {
     fetchLeads();
   }, []);
 
-  const onChange = (key) => (e) => {
-    resetMessages();
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
-  };
+
+const filteredLeads = leads.filter((l) => {
+  const term = search.trim().toLowerCase();
+
+  const matchesText =
+    !term ||
+    (l.name ?? "").toLowerCase().includes(term) ||
+    (l.email ?? "").toLowerCase().includes(term);
+
+  const matchesStatus =
+    statusFilter === "ALL" ||
+    (l.status ?? "").toLowerCase() === statusFilter.toLowerCase();
+
+  return matchesText && matchesStatus;
+});
+
+const onChange = (key) => (e) => {
+  resetMessages();
+  setForm((prev) => ({ ...prev, [key]: e.target.value }));
+};
+
 
   const startEdit = (lead) => {
     resetMessages();
@@ -235,6 +255,7 @@ export default function LeadsPage() {
               <label>Status</label>
               <select style={{ width: "100%", padding: 8 }} value={form.status} onChange={onChange("status")}>
                 <option value="Lead">Lead</option>
+                <option value="Converted">Converted</option>
                 <option value="Contacted">Contacted</option>
                 <option value="Qualified">Qualified</option>
                 <option value="Customer">Customer</option>
@@ -264,6 +285,42 @@ export default function LeadsPage() {
           )}
         </form>
       </div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "center" }}>
+  <input
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    placeholder="Search by name or email..."
+    style={{ padding: 8, flex: 1 }}
+  />
+
+  <select
+    value={statusFilter}
+    onChange={(e) => setStatusFilter(e.target.value)}
+    style={{ padding: 8 }}
+  >
+    <option value="ALL">All</option>
+    <option value="Lead">Lead</option>
+    <option value="Converted">Converted</option>
+    <option value="Contacted">Contacted</option>
+    <option value="Qualified">Qualified</option>
+    <option value="Customer">Customer</option>
+    <option value="Lost">Lost</option>
+
+  </select>
+
+  <button
+    type="button"
+    onClick={() => {
+      setSearch("");
+      setStatusFilter("ALL");
+    }}
+    style={{ padding: 8 }}
+  >
+    Clear
+  </button>
+</div>
+
+
 
       {/* List */}
       <div style={{ padding: 12, border: "1px solid #ddd" }}>
@@ -286,7 +343,7 @@ export default function LeadsPage() {
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead) => (
+              {filteredLeads.map((lead) => (
                 <tr key={lead.id} style={{ borderTop: "1px solid #eee" }}>
                   <td>{lead.id}</td>
                   <td>{lead.name}</td>

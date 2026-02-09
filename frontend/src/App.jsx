@@ -4,6 +4,8 @@ import LoginPage from "./pages/LoginPage";
 import PrivateRoute from "./components/PrivateRoute";
 import { useAuth } from "./context/AuthContext";
 import ClientsPage from "./pages/Clients";
+import Dashboard from "./pages/Dashboard";
+
 
 function Nav() {
   const { isAuthed, logout } = useAuth();
@@ -15,6 +17,7 @@ function Nav() {
         <>
           <Link to="/leads">Leads</Link>
           <Link to="/clients">Clients</Link>
+          <Link to="/dashboard">Dashboard</Link>
           <button onClick={logout}>Logout</button>
           
         </>
@@ -47,8 +50,18 @@ export default function App() {
             <PrivateRoute>
               <ClientsPage />
             </PrivateRoute>
+            
           }
         />
+        <Route
+           path="/dashboard"
+           element={
+           <PrivateRoute>
+            <Dashboard />
+             </PrivateRoute>
+             }
+            />
+
       </Routes>
     </BrowserRouter>
   );

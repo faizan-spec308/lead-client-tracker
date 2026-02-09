@@ -15,7 +15,6 @@ from db import init_db, engine
 from deps import get_session
 from schemas import ContactCreate, ContactRead, ContactUpdate, ClientRead
 
-
 app = FastAPI()
 
 app.add_middleware(
@@ -45,12 +44,31 @@ def on_startup():
             session.add(admin)
             session.commit()
 
-    
 
 @app.get("/")
 def root():
     return {"status": "ok"}
 
+
+# -----------------------
+# Auth
+# -----------------------
+@app.post("/auth/login")
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: Session = Depends(get_session),
+):
+    user = get_user_by_email(session, form_data.username)  # username = email
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+# -----------------------
+# Leads CRUD
+# -----------------------
 @app.post("/leads", response_model=ContactRead)
 def create_lead(
     payload: ContactCreate,
@@ -67,35 +85,14 @@ def create_lead(
     session.refresh(contact)
     return contact
 
+
 @app.get("/leads", response_model=list[ContactRead])
 def get_leads(
     session: Session = Depends(get_session),
     current_user: models.User = Depends(get_current_user),
 ):
-    leads = session.exec(select(models.Contact)).all()
-    return leads
+    return session.exec(select(models.Contact)).all()
 
-
-@app.post("/auth/login")
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    session: Session = Depends(get_session),
-):
-    # OAuth2PasswordRequestForm uses `username`; we treat it as email
-    user = get_user_by_email(session, form_data.username)
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    token = create_access_token({"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
-
-
-from fastapi import HTTPException, Depends
-from sqlmodel import Session
-import models
-from deps import get_session
-from schemas import ContactUpdate, ContactRead
-from auth import get_current_user
 
 @app.put("/leads/{id}", response_model=ContactRead)
 def update_lead(
@@ -110,7 +107,7 @@ def update_lead(
 
     data = payload.model_dump(exclude_unset=True)
 
-    # optional: minimal validation
+    # minimal validation
     if "email" in data and not data["email"]:
         raise HTTPException(status_code=400, detail="Email cannot be empty")
     if "name" in data and not data["name"]:
@@ -123,8 +120,6 @@ def update_lead(
     session.commit()
     session.refresh(contact)
     return contact
-
-
 
 @app.delete("/leads/{id}")
 def delete_lead(
@@ -140,12 +135,17 @@ def delete_lead(
     session.commit()
     return {"message": f"Lead {id} deleted"}
 
+
+# -----------------------
+# Clients + Conversion
+# -----------------------
 @app.get("/clients", response_model=list[ClientRead])
 def get_clients(
     session: Session = Depends(get_session),
     current_user: models.User = Depends(get_current_user),
 ):
     return session.exec(select(models.Client)).all()
+
 
 @app.post("/leads/{id}/convert", response_model=ClientRead)
 def convert_lead_to_client(
@@ -160,7 +160,6 @@ def convert_lead_to_client(
     if lead.status == "Converted":
         raise HTTPException(status_code=400, detail="Lead already converted")
 
-    # Optional extra guard: prevent creating multiple clients from same lead
     existing_client = session.exec(
         select(models.Client).where(models.Client.source_lead_id == id)
     ).first()
@@ -183,3 +182,21 @@ def convert_lead_to_client(
     return client
 
 
+# -----------------------
+# Stats
+# -----------------------
+@app.get("/stats")
+def get_stats(
+    session: Session = Depends(get_session),
+    current_user: models.User = Depends(get_current_user),
+):
+    leads = session.exec(select(models.Contact)).all()
+    clients = session.exec(select(models.Client)).all()
+
+    converted_count = sum(1 for l in leads if l.status == "Converted")
+
+    return {
+        "total_leads": len(leads),
+        "converted_leads": converted_count,
+        "clients": len(clients),
+    }
