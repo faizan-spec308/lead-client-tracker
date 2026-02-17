@@ -13,3 +13,6 @@ python-multipart
 
 bcrypt<4
 
+pytest
+httpx
+

@@ -2,14 +2,15 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
-
 import models
 from auth import (
+    
     create_access_token,
     verify_password,
     hash_password,
     get_user_by_email,
     get_current_user,
+   
 )
 from db import init_db, engine
 from deps import get_session
@@ -26,23 +27,22 @@ app.add_middleware(
 )
 
 
+import os
+
 @app.on_event("startup")
 def on_startup():
+    if os.getenv("TESTING") == "1":
+        return  # completely skip startup logic in tests
+
     init_db()
 
-    # Create default admin if none exists
-    with Session(engine) as session:
-        admin_email = "admin@example.com"
-        admin_password = "admin123"  # change this later
+    admin_email = "admin@example.com"
+    admin_password = "admin123"
 
+    with Session(engine) as session:
         existing = get_user_by_email(session, admin_email)
-        if not existing:
-            admin = models.User(
-                email=admin_email,
-                hashed_password=hash_password(admin_password),
-            )
-            session.add(admin)
-            session.commit()
+        
+           
 
 
 @app.get("/")
