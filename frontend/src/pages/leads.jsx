@@ -2,17 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 
 const initialForm = { name: "", email: "", phone: "", status: "Lead" };
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+
 
 function validate(form) {
   const errors = {};
 
   if (!form.name.trim()) errors.name = "Name is required";
   if (!form.email.trim()) errors.email = "Email is required";
-  else if (!/^\S+@\S+\.\S+$/.test(form.email.trim()))
+  else if (!emailRegex.test(form.email.trim()))
     errors.email = "Email format looks invalid";
 
-  // phone optional (keep simple)
-  // status optional but we keep one
+ 
   return errors;
 }
 
